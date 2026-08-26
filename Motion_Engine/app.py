@@ -244,6 +244,7 @@ def compute_gesture_logic(session_id: str, raw_landmarks: list) -> dict:
         "delta": round(float(delta), 4),
         "pan_dx": round(float(pan_dx), 4),
         "pan_dy": round(float(pan_dy), 4),
+        "landmarks": raw_landmarks,
         "detected": True
     }
 
