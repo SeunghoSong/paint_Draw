@@ -20,7 +20,7 @@ const PORT = process.env.PORT || 8000;
 // Docker Compose 실행 시 docker-compose.yml에서 아래 값들을 환경변수로 주입해야 함:
 //   CONTAINER_B_URL=ws://video_engine:8001/analyze
 //   MOTION_ENGINE_URL=http://motion_engine:8002/gesture
-const CONTAINER_B_URL = process.env.CONTAINER_B_URL || 'ws://localhost:8001/analyze';
+const CONTAINER_B_URL = process.env.CONTAINER_B_URL || 'ws://localhost:8001/ws';
 const MOTION_ENGINE_URL = process.env.MOTION_ENGINE_URL || 'http://localhost:8002/gesture';
 const CANVAS_WIDTH = 1280;   // Motion_Engine이 0~1 정규화 좌표로 주므로 A가 직접 픽셀로 변환
 const CANVAS_HEIGHT = 720;
@@ -206,7 +206,7 @@ wssMobile.on('connection', (ws) => {
 
     // Container B로 그대로 전달 (session_id, frame 동일 스키마)
     if (bSocket && bSocket.readyState === WebSocket.OPEN) {
-      bSocket.send(JSON.stringify({ session_id: sessionId, frame }));
+      bSocket.send(JSON.stringify({ session_id: sessionId, type: 'frame', frame }));
     }
   });
 
