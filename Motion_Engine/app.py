@@ -196,15 +196,21 @@ def compute_gesture_logic(session_id: str, raw_landmarks: list) -> dict:
         state.prev_pan_x = None
         state.prev_pan_y = None
 
-    # 3. 디바운스 필터 (3프레임 다수결)
-    state.action_queue.append(raw_action)
-    action_counts = {}
-    for act in state.action_queue:
-        action_counts[act] = action_counts.get(act, 0) + 1
-    
-    most_common_action = max(action_counts, key=action_counts.get)
-    if action_counts[most_common_action] >= 2:
-        state.current_stable_action = most_common_action
+    # 3. 🌟 비대칭 무지연 펜-업 디바운스 필터 (Asymmetric Instant Cutoff)
+    # 손을 펴는 순간(DRAW -> 비DRAW)에는 다수결 지연 없이 0초 만에 칼같이 펜-업하여 한자 삐침 100% 차단!
+    if state.current_stable_action == "DRAW" and raw_action != "DRAW":
+        state.action_queue.clear()
+        state.action_queue.append(raw_action)
+        state.current_stable_action = raw_action
+    else:
+        state.action_queue.append(raw_action)
+        action_counts = {}
+        for act in state.action_queue:
+            action_counts[act] = action_counts.get(act, 0) + 1
+        
+        most_common_action = max(action_counts, key=action_counts.get)
+        if action_counts[most_common_action] >= 2:
+            state.current_stable_action = most_common_action
 
     final_action = state.current_stable_action
 
