@@ -279,8 +279,15 @@
             <p style="font-size: 12px; color: #94a3b8; margin-top: 4px;">스마트폰 기본 카메라로 아래 QR을 스캔하세요</p>
             <img id="qr-img" src="" alt="QR Code">
             <div class="url-box" id="direct-url">https://...</div>
-            <div class="guide-box">
-                👉 <b>안내:</b> 접속 시 <i>"안전하지 않은 연결"</i> 경고가 뜨면 <b>[고급] ➔ [계속 진행]</b>을 누르시면 즉시 카메라가 켜집니다!
+            
+            <div style="margin-top: 10px; display: flex; gap: 6px; align-items: center;">
+                <input type="text" id="ip-input" placeholder="내 PC IP (예: 192.168.0.x)" style="flex: 1; padding: 7px 10px; background: #0f172a; border: 1px solid #334155; border-radius: 8px; color: #38bdf8; font-size: 13px;">
+                <button class="tool-btn" id="update-ip-btn" style="padding: 7px 12px; background: #0284c7; font-size: 12px;">IP 변경</button>
+            </div>
+
+            <div class="guide-box" style="margin-top: 10px;">
+                👉 <b>안내:</b> 접속 시 <i>"안전하지 않은 연결"</i> 경고가 뜨면 <b>[고급] ➔ [계속 진행]</b>을 누르시면 즉시 카메라가 켜집니다!<br>
+                ※ PC와 스마트폰이 <b>반드시 동일한 Wi-Fi</b>에 연결되어 있어야 합니다.
             </div>
             <button class="tool-btn" id="close-qr-btn" style="width: 100%; margin-top: 12px; background: #3b82f6;">닫기</button>
         </div>
@@ -290,22 +297,42 @@
         const sessionId = 'poc-001';
         document.getElementById('session-badge').textContent = `Session: #${sessionId}`;
         
-        const hostIp = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-                       ? '192.168.55.208'
-                       : window.location.hostname;
+        let currentHostIp = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+                            ? (localStorage.getItem('paint_draw_custom_ip') || '192.168.55.208')
+                            : window.location.hostname;
 
-        const port = window.location.port ? `:${window.location.port}` : '';
-        const mobileUrl = `${window.location.protocol}//${hostIp}${port}/mobile?session=${sessionId}`;
-        document.getElementById('direct-url').textContent = mobileUrl;
+        const ipInput = document.getElementById('ip-input');
+        ipInput.value = currentHostIp;
 
-        fetch(`/api/qr?session=${sessionId}&host=${hostIp}`)
-            .then(res => res.json())
-            .then(data => {
-                if (data.qrDataUrl) {
-                    document.getElementById('qr-img').src = data.qrDataUrl;
-                }
-            })
-            .catch(err => console.error('QR 로드 실패:', err));
+        function refreshQrCode(ip) {
+            currentHostIp = ip;
+            localStorage.setItem('paint_draw_custom_ip', ip);
+            const port = window.location.port ? `:${window.location.port}` : '';
+            const mobileUrl = `${window.location.protocol}//${ip}${port}/mobile?session=${sessionId}`;
+            document.getElementById('direct-url').textContent = mobileUrl;
+
+            fetch(`/api/qr?session=${sessionId}&host=${ip}`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.qrDataUrl) {
+                        document.getElementById('qr-img').src = data.qrDataUrl;
+                    }
+                })
+                .catch(err => console.error('QR 로드 실패:', err));
+        }
+
+        refreshQrCode(currentHostIp);
+
+        document.getElementById('update-ip-btn').onclick = () => {
+            const val = ipInput.value.trim();
+            if (val) refreshQrCode(val);
+        };
+        ipInput.onkeydown = (e) => {
+            if (e.key === 'Enter') {
+                const val = ipInput.value.trim();
+                if (val) refreshQrCode(val);
+            }
+        };
 
         const qrModal = document.getElementById('qr-modal');
         document.getElementById('qr-toggle-btn').onclick = () => qrModal.classList.toggle('hidden');
