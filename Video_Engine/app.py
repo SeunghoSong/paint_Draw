@@ -82,8 +82,14 @@ def ensure_model() -> bytes:
         return f.read()
 
 
-# 프레임마다 독립적으로 들어오는 base64 이미지를 처리하므로 IMAGE 모드 사용
-# (VIDEO/LIVE_STREAM 모드는 연속 타임스탬프 관리가 필요해 이 구조와 맞지 않음)
+# VIDEO 모드: 이전 프레임의 추적 정보를 활용해 프레임 간 손 위치를 더 안정적으로 추적한다.
+# IMAGE 모드와 달리 detect_for_video(image, timestamp_ms)를 호출해야 하며
+# timestamp_ms는 항상 이전 호출보다 커야 한다 (아래 _next_video_timestamp_ms 참고).
+#
+# 주의: hands_detector 인스턴스 하나를 모든 WebSocket 연결이 공유하므로, VIDEO 모드의
+# "연속된 하나의 영상" 가정은 동시에 여러 세션이 프레임을 보낼 경우 깨진다. 현재는
+# DEFAULT_SESSION_ID가 고정값인 POC 범위(단일 세션 가정)라 문제되지 않지만, 세션별
+# 동시 처리를 지원하려면 세션마다 별도의 HandLandmarker 인스턴스가 필요하다.
 _hand_landmarker_options = mp_vision.HandLandmarkerOptions(
     base_options=mp_tasks.BaseOptions(model_asset_buffer=ensure_model()),
     num_hands=1,  # POC 범위는 손 1개만 추적
@@ -93,6 +99,20 @@ _hand_landmarker_options = mp_vision.HandLandmarkerOptions(
     running_mode=mp_vision.RunningMode.VIDEO,
 )
 hands_detector = mp_vision.HandLandmarker.create_from_options(_hand_landmarker_options)
+
+_video_timestamp_ms = 0
+
+
+def _next_video_timestamp_ms() -> int:
+    """VIDEO 모드가 요구하는 단조증가 타임스탬프를 생성한다.
+
+    실제 시각(wall clock)을 기준으로 하되, 같은 밀리초 안에 프레임이 연달아
+    들어오거나 시스템 시각이 역행해도 항상 이전 값보다 커지도록 보정한다.
+    """
+    global _video_timestamp_ms
+    now_ms = int(time.time() * 1000)
+    _video_timestamp_ms = max(now_ms, _video_timestamp_ms + 1)
+    return _video_timestamp_ms
 
 
 def decode_base64_frame(frame_b64: str):
@@ -113,7 +133,7 @@ def extract_landmarks(image_bgr):
 
     image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
     mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=image_rgb)
-    result = hands_detector.detect(mp_image)
+    result = hands_detector.detect_for_video(mp_image, _next_video_timestamp_ms())
 
     if not result.hand_landmarks:
         return False, []
