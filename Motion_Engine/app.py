@@ -208,7 +208,7 @@ def compute_gesture_logic(session_id: str, raw_landmarks: list) -> dict:
 
     final_action = state.current_stable_action
 
-    # 4. 🌟 속도 적응형 동적 EMA 손떨림 보정 (Adaptive One-Euro Style Filter) + 데드존
+    # 4. 🌟 속도 적응형 최적화 EMA 손떨림 보정 (끊김 없는 고속 반응 튜닝)
     if state.smooth_x is None or state.smooth_y is None:
         state.smooth_x = raw_x
         state.smooth_y = raw_y
@@ -216,16 +216,13 @@ def compute_gesture_logic(session_id: str, raw_landmarks: list) -> dict:
         # 손가락 이동 거리(속도) 계산
         move_dist = math.sqrt((raw_x - state.smooth_x) ** 2 + (raw_y - state.smooth_y) ** 2)
         
-        # 1) 미세 노이즈 데드존 (카메라 센서의 0.0015 이하 미세 진동 완벽 흡수)
-        if move_dist < 0.0015:
-            alpha = 0.08
-        # 2) 정밀 글씨 쓰기/저속 드로잉 구간: 강력한 노이즈 억제 (alpha = 0.22)
-        elif move_dist < 0.025:
-            alpha = 0.22
-        # 3) 일반 드로잉 중속 구간 (alpha = 0.45)
-        elif move_dist < 0.08:
-            alpha = 0.48
-        # 4) 빠른 이동 고속 구간: 렉 없이 즉각 추적 (alpha = 0.85)
+        # 1) 초미세 진동 필터 (0.001 이하 미세 떨림만 부드럽게 흡수)
+        if move_dist < 0.001:
+            alpha = 0.35
+        # 2) 정밀 글씨 쓰기 / 드로잉 구간 (alpha = 0.50)
+        elif move_dist < 0.05:
+            alpha = 0.50
+        # 3) 빠른 이동 구간 (alpha = 0.85, 렉/지연 0%)
         else:
             alpha = 0.85
 
