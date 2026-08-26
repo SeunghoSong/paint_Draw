@@ -138,6 +138,9 @@ function connectToContainerB() {
         return; // 손 미검출 시 굳이 C 호출 안 함
       }
 
+      // 손 뼈대(스켈레톤) 시각화용 - 정규화 좌표(0~1) 그대로 PC에 전달
+      io.to(sessionId).emit('hand-landmarks', { landmarks: msg.landmarks });
+
       try {
         const res = await axios.post(MOTION_ENGINE_URL, {
           session_id: sessionId,
@@ -146,8 +149,9 @@ function connectToContainerB() {
 
         const { action, x, y, delta, pan_dx, pan_dy } = res.data;
 
-        // Motion_Engine은 0~1 정규화 좌표로 응답 -> 캔버스 픽셀 좌표로 변환
-        const pixelX = typeof x === 'number' ? x * CANVAS_WIDTH : undefined;
+        // 손 뼈대(스켈레톤)와 동일하게 좌우반전 보정 적용
+        const mirroredX = typeof x === 'number' ? 1 - x : undefined;
+        const pixelX = typeof mirroredX === 'number' ? mirroredX * CANVAS_WIDTH : undefined;
         const pixelY = typeof y === 'number' ? y * CANVAS_HEIGHT : undefined;
 
         io.to(sessionId).emit('control-command', {
@@ -204,7 +208,7 @@ wssMobile.on('connection', (ws) => {
     const frame = msg.frame;
     if (!frame) return;
 
-    // Container B로 그대로 전달 (session_id, frame 동일 스키마)
+    // Container B로 그대로 전달 (B가 기대하는 포맷: session_id, type:"frame", frame)
     if (bSocket && bSocket.readyState === WebSocket.OPEN) {
       bSocket.send(JSON.stringify({ session_id: sessionId, type: 'frame', frame }));
     }
