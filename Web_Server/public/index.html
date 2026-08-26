@@ -68,29 +68,29 @@
     let sessionId = null;
 
     async function init() {
-  // POC 고정 세션 사용 (PM 계획서: session_id = poc-001 하드코딩)
-  const configRes = await fetch('/api/config');
-  const config = await configRes.json();
-  sessionId = config.fixedSessionId; // 'poc-001'
+      // POC 고정 세션 사용 (PM 계획서: session_id = poc-001 하드코딩)
+      const configRes = await fetch('/api/config');
+      const config = await configRes.json();
+      sessionId = config.fixedSessionId; // 'poc-001'
 
-  // QR도 반드시 같은 고정 세션(poc-001)을 가리키도록 생성
-  // (이전 버전은 QR용으로 별도 랜덤 세션을 만들어서 PC/모바일이 서로 다른 방에 들어가는 버그가 있었음)
-  try {
-    const qrRes = await fetch(`/api/qr?session=${sessionId}`);
-    const qrData = await qrRes.json();
-    document.getElementById('qr-img').src = qrData.qrDataUrl;
-    console.log('모바일 접속 URL:', qrData.mobileUrl);
-  } catch (e) {
-    console.error('QR 생성 실패:', e);
-    document.getElementById('qr-box').innerHTML =
-      `<p style="color:#333;">QR 생성 실패. 아래 주소로 직접 접속하세요:<br><b>${window.location.origin}/mobile</b></p>`;
-  }
+      // QR도 반드시 같은 고정 세션(poc-001)을 가리키도록 생성
+      // (이전 버전은 QR용으로 별도 랜덤 세션을 만들어서 PC/모바일이 서로 다른 방에 들어가는 버그가 있었음)
+      try {
+        const qrRes = await fetch(`/api/qr?session=${sessionId}`);
+        const qrData = await qrRes.json();
+        document.getElementById('qr-img').src = qrData.qrDataUrl;
+        console.log('모바일 접속 URL:', qrData.mobileUrl);
+      } catch (e) {
+        console.error('QR 생성 실패:', e);
+        document.getElementById('qr-box').innerHTML =
+          `<p style="color:#333;">QR 생성 실패. 아래 주소로 직접 접속하세요:<br><b>${window.location.origin}/mobile</b></p>`;
+      }
 
-  document.getElementById('status').textContent = `⏳ 고정 세션(${sessionId})으로 모바일 연결 대기중...`;
+      document.getElementById('status').textContent = `⏳ 고정 세션(${sessionId})으로 모바일 연결 대기중...`;
 
-  // 소켓으로 PC 역할로 고정 세션 방 참여
-  socket.emit('join-as-pc', sessionId);
-}
+      // 소켓으로 PC 역할로 고정 세션 방 참여
+      socket.emit('join-as-pc', sessionId);
+    }
 
     socket.on('mobile-connected', () => {
       const statusEl = document.getElementById('status');
@@ -109,12 +109,14 @@
     ctx.lineCap = 'round';
 
     let lastX = null, lastY = null;
+    let panOffsetX = 0, panOffsetY = 0;
+    let zoomScale = 1;
 
-    // PM 계획서 스펙: {"cmd": "DRAW" | "ERASE" | "NONE", "x": int, "y": int}
+    // Motion_Engine 실제 스펙: {"action": "DRAW"|"ERASE"|"PAN"|"ZOOM_IN"|"ZOOM_OUT"|"HOVER", x, y, delta, pan_dx, pan_dy}
     socket.on('control-command', (command) => {
-      const { cmd, x, y } = command;
+      const { action, x, y, delta, pan_dx, pan_dy } = command;
 
-      if (cmd === 'DRAW') {
+      if (action === 'DRAW') {
         if (lastX !== null) {
           ctx.beginPath();
           ctx.moveTo(lastX, lastY);
@@ -123,12 +125,24 @@
         }
         lastX = x;
         lastY = y;
-      } else if (cmd === 'ERASE') {
+      } else if (action === 'ERASE') {
         ctx.clearRect(x - 20, y - 20, 40, 40);
         lastX = x;
         lastY = y;
-      } else if (cmd === 'NONE') {
-        // 손 미검출 / 인식 불가: 선이 안 이어지도록 펜 상태 리셋
+      } else if (action === 'PAN') {
+        // POC 간단 구현: 캔버스 전체를 CSS로 이동 (실제 드로잉 내용까지 옮기려면 추후 고도화 필요)
+        panOffsetX += pan_dx || 0;
+        panOffsetY += pan_dy || 0;
+        canvas.style.transform = `translate(${panOffsetX}px, ${panOffsetY}px) scale(${zoomScale})`;
+        lastX = null;
+        lastY = null;
+      } else if (action === 'ZOOM_IN' || action === 'ZOOM_OUT') {
+        zoomScale = Math.max(0.3, Math.min(3, zoomScale + (delta || 0)));
+        canvas.style.transform = `translate(${panOffsetX}px, ${panOffsetY}px) scale(${zoomScale})`;
+        lastX = null;
+        lastY = null;
+      } else if (action === 'HOVER' || action === 'NONE') {
+        // 대기 모드: 선이 안 이어지도록 펜 상태만 리셋
         lastX = null;
         lastY = null;
       }

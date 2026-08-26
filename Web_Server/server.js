@@ -6,6 +6,7 @@ const QRCode = require('qrcode');
 const { v4: uuidv4 } = require('uuid');
 const { Server } = require('socket.io');
 const WebSocket = require('ws');
+const axios = require('axios');
 
 const app = express();
 const server = http.createServer(app);
@@ -15,9 +16,14 @@ const io = new Server(server, { cors: { origin: '*' } });
 // 설정값 (PM 계획서 스펙 기준, 팀원과 합의된 값으로 필요시 수정)
 // ---------------------------
 const PORT = process.env.PORT || 8000;
-const CONTAINER_B_URL = process.env.CONTAINER_B_URL || 'ws://localhost:8001/analyze'; // 영상 분석 엔진
-const CANVAS_WIDTH = 1280;   // Container C가 좌표 스케일링할 때 쓰는 기준 해상도
-const CANVAS_HEIGHT = 720;   // 주의: Container C 담당자와 반드시 이 값 합의할 것
+// ⚠️ 로컬(Node 직접 실행)에서는 localhost, Docker Compose에서는 서비스명을 써야 함
+// Docker Compose 실행 시 docker-compose.yml에서 아래 값들을 환경변수로 주입해야 함:
+//   CONTAINER_B_URL=ws://video_engine:8001/analyze
+//   MOTION_ENGINE_URL=http://motion_engine:8002/gesture
+const CONTAINER_B_URL = process.env.CONTAINER_B_URL || 'ws://localhost:8001/analyze';
+const MOTION_ENGINE_URL = process.env.MOTION_ENGINE_URL || 'http://localhost:8002/gesture';
+const CANVAS_WIDTH = 1280;   // Motion_Engine이 0~1 정규화 좌표로 주므로 A가 직접 픽셀로 변환
+const CANVAS_HEIGHT = 720;
 const FIXED_SESSION_ID = 'poc-001'; // PM 계획서: 고정 세션 ID 하드코딩
 
 app.use(cors());
@@ -116,9 +122,46 @@ function connectToContainerB() {
       console.log(`Container B(${CONTAINER_B_URL})에 연결됨`);
     });
 
-    bSocket.on('message', (data) => {
-      // 참고용: B->C는 직접 연결이라 A가 굳이 처리 안 해도 됨. 디버깅용 로그만.
-      // console.log('B로부터 응답:', data.toString());
+    bSocket.on('message', async (data) => {
+      // Container B(Video_Engine)가 손 좌표를 응답으로 보내주면,
+      // 그걸 그대로 Motion_Engine(C)의 REST API로 넘겨서 동작(action)을 판별받음
+      let msg;
+      try {
+        msg = JSON.parse(data);
+      } catch (err) {
+        console.error('B 응답 JSON 파싱 실패:', err.message);
+        return;
+      }
+
+      const sessionId = msg.session_id || FIXED_SESSION_ID;
+      if (!msg.detected || !msg.landmarks || msg.landmarks.length === 0) {
+        return; // 손 미검출 시 굳이 C 호출 안 함
+      }
+
+      try {
+        const res = await axios.post(MOTION_ENGINE_URL, {
+          session_id: sessionId,
+          landmarks: msg.landmarks
+        }, { timeout: 2000 });
+
+        const { action, x, y, delta, pan_dx, pan_dy } = res.data;
+
+        // Motion_Engine은 0~1 정규화 좌표로 응답 -> 캔버스 픽셀 좌표로 변환
+        const pixelX = typeof x === 'number' ? x * CANVAS_WIDTH : undefined;
+        const pixelY = typeof y === 'number' ? y * CANVAS_HEIGHT : undefined;
+
+        io.to(sessionId).emit('control-command', {
+          action,
+          x: pixelX,
+          y: pixelY,
+          delta,
+          pan_dx: typeof pan_dx === 'number' ? pan_dx * CANVAS_WIDTH : 0,
+          pan_dy: typeof pan_dy === 'number' ? pan_dy * CANVAS_HEIGHT : 0
+        });
+      } catch (err) {
+        // POC 중 하나가 죽어도 서버가 안 죽게 try/catch로 감싸고 로그만 (PM 계획서 4.5 공통 합의사항)
+        console.error('Motion_Engine 호출 실패:', err.message);
+      }
     });
 
     bSocket.on('error', (err) => {
