@@ -3,7 +3,10 @@ services:
     build: ./Web_Server
     container_name: Web_Server
     ports:
-      - "8000:80"
+      - "8000:8000"
+    volumes:
+      - ./Web_Server/public:/app/public
+      - ./Web_Server/server.js:/app/server.js
     depends_on:
       - video_engine
       - motion_engine
@@ -15,6 +18,8 @@ services:
     container_name: Video_Engine
     ports:
       - "8001:8001"
+    volumes:
+      - ./Video_Engine/app.py:/app/app.py
     env_file:
       - .env
     networks:
@@ -25,6 +30,8 @@ services:
     container_name: Motion_Engine
     ports:
       - "8002:8002"
+    volumes:
+      - ./Motion_Engine/app.py:/app/app.py
     env_file:
       - .env
     networks:
