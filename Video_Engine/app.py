@@ -90,7 +90,7 @@ _hand_landmarker_options = mp_vision.HandLandmarkerOptions(
     min_hand_detection_confidence=0.6,
     min_hand_presence_confidence=0.5,
     min_tracking_confidence=0.5,
-    running_mode=mp_vision.RunningMode.IMAGE,
+    running_mode=mp_vision.RunningMode.VIDEO,
 )
 hands_detector = mp_vision.HandLandmarker.create_from_options(_hand_landmarker_options)
 
