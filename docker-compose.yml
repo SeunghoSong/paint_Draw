@@ -1,0 +1,35 @@
+services:
+  web_server:
+    build: ./Web_Server
+    container_name: Web_Server
+    ports:
+      - "3000:80"
+    depends_on:
+      - video_engine
+      - motion_engine
+    networks:
+      - paintdraw_net
+
+  video_engine:
+    build: ./Video_Engine
+    container_name: Video_Engine
+    ports:
+      - "8001:8001"
+    env_file:
+      - .env
+    networks:
+      - paintdraw_net
+
+  motion_engine:
+    build: ./Motion_Engine
+    container_name: Motion_Engine
+    ports:
+      - "8002:8002"
+    env_file:
+      - .env
+    networks:
+      - paintdraw_net
+
+networks:
+  paintdraw_net:
+    driver: bridge
