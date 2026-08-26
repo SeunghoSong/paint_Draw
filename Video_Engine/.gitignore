@@ -1,0 +1,2 @@
+# MediaPipe Hand Landmarker 모델(ensure_model()이 최초 실행 시 자동 다운로드)
+models/

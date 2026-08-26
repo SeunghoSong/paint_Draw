@@ -1,1 +1,7 @@
-flask==3.0.3
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
+websockets==17.0.1
+mediapipe==1.0.1
+# opencv-contrib-python(cv2, GUI 포함)은 mediapipe의 의존성으로 자동 설치된다.
+# 별도로 opencv-python을 추가하면 동일한 cv2 네임스페이스가 충돌하니 추가하지 말 것.
+numpy==2.4.6
