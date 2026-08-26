@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>실시간 손동작 원격 그림판 - PC</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, 'Segoe UI', sans-serif;
+      background: #1a1a2e;
+      color: white;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+      padding: 20px;
+    }
+    h1 { font-size: 24px; margin-bottom: 8px; }
+    p.sub { color: #aaa; margin-top: 0; }
+    #qr-box {
+      background: white;
+      padding: 20px;
+      border-radius: 16px;
+      margin: 24px 0;
+    }
+    #qr-box img { display: block; width: 260px; height: 260px; }
+    #status {
+      padding: 10px 20px;
+      border-radius: 20px;
+      font-size: 14px;
+      background: #333;
+    }
+    #status.connected {
+      background: #16a34a;
+    }
+    #canvas-area {
+      display: none;
+      margin-top: 20px;
+    }
+    canvas {
+      background: white;
+      border-radius: 8px;
+      touch-action: none;
+      max-width: 90vw;
+      height: auto;
+    }
+  </style>
+</head>
+<body>
+  <h1>🖐️ 실시간 손동작 원격 그림판</h1>
+  <p class="sub">휴대폰으로 아래 QR코드를 스캔해서 연결하세요</p>
+
+  <div id="qr-box">
+    <img id="qr-img" src="" alt="QR 코드 로딩중..." />
+  </div>
+
+  <div id="status">⏳ 모바일 연결 대기중...</div>
+
+  <div id="canvas-area">
+    <canvas id="drawCanvas" width="1280" height="720"></canvas>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    let sessionId = null;
+
+    async function init() {
+  // POC 고정 세션 사용 (PM 계획서: session_id = poc-001 하드코딩)
+  const configRes = await fetch('/api/config');
+  const config = await configRes.json();
+  sessionId = config.fixedSessionId; // 'poc-001'
+
+  // QR도 반드시 같은 고정 세션(poc-001)을 가리키도록 생성
+  // (이전 버전은 QR용으로 별도 랜덤 세션을 만들어서 PC/모바일이 서로 다른 방에 들어가는 버그가 있었음)
+  try {
+    const qrRes = await fetch(`/api/qr?session=${sessionId}`);
+    const qrData = await qrRes.json();
+    document.getElementById('qr-img').src = qrData.qrDataUrl;
+    console.log('모바일 접속 URL:', qrData.mobileUrl);
+  } catch (e) {
+    console.error('QR 생성 실패:', e);
+    document.getElementById('qr-box').innerHTML =
+      `<p style="color:#333;">QR 생성 실패. 아래 주소로 직접 접속하세요:<br><b>${window.location.origin}/mobile</b></p>`;
+  }
+
+  document.getElementById('status').textContent = `⏳ 고정 세션(${sessionId})으로 모바일 연결 대기중...`;
+
+  // 소켓으로 PC 역할로 고정 세션 방 참여
+  socket.emit('join-as-pc', sessionId);
+}
+
+    socket.on('mobile-connected', () => {
+      const statusEl = document.getElementById('status');
+      statusEl.textContent = '✅ 모바일 연결됨!';
+      statusEl.classList.add('connected');
+      document.getElementById('canvas-area').style.display = 'block';
+    });
+
+    // (다음 단계) Container C에서 오는 제어 명령 받아서 캔버스에 그리기
+    const canvas = document.getElementById('drawCanvas');
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = 'white';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+
+    let lastX = null, lastY = null;
+
+    // PM 계획서 스펙: {"cmd": "DRAW" | "ERASE" | "NONE", "x": int, "y": int}
+    socket.on('control-command', (command) => {
+      const { cmd, x, y } = command;
+
+      if (cmd === 'DRAW') {
+        if (lastX !== null) {
+          ctx.beginPath();
+          ctx.moveTo(lastX, lastY);
+          ctx.lineTo(x, y);
+          ctx.stroke();
+        }
+        lastX = x;
+        lastY = y;
+      } else if (cmd === 'ERASE') {
+        ctx.clearRect(x - 20, y - 20, 40, 40);
+        lastX = x;
+        lastY = y;
+      } else if (cmd === 'NONE') {
+        // 손 미검출 / 인식 불가: 선이 안 이어지도록 펜 상태 리셋
+        lastX = null;
+        lastY = null;
+      }
+    });
+
+    init();
+  </script>
+</body>
+</html>

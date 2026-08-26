@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>손동작 인식 - 모바일 카메라</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, sans-serif;
+      background: #1a1a2e;
+      color: white;
+      margin: 0;
+      padding: 16px;
+      text-align: center;
+    }
+    h2 { font-size: 18px; margin-bottom: 12px; }
+    #video-wrap {
+      position: relative;
+      width: 100%;
+      max-width: 400px;
+      margin: 0 auto;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    video {
+      width: 100%;
+      display: block;
+      transform: scaleX(-1); /* 셀카 모드처럼 거울반전 */
+    }
+    #status {
+      margin-top: 16px;
+      padding: 10px;
+      border-radius: 8px;
+      background: #333;
+      font-size: 14px;
+    }
+    #status.connected { background: #16a34a; }
+    #status.error { background: #dc2626; }
+    button {
+      margin-top: 16px;
+      padding: 12px 24px;
+      font-size: 16px;
+      border: none;
+      border-radius: 8px;
+      background: #6366f1;
+      color: white;
+    }
+  </style>
+</head>
+<body>
+  <h2>📷 손을 카메라에 비춰주세요</h2>
+
+  <div id="video-wrap">
+    <video id="video" autoplay playsinline muted></video>
+  </div>
+
+  <div id="status">연결중...</div>
+  <button id="startBtn" style="display:none;">카메라 시작</button>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    const params = new URLSearchParams(window.location.search);
+    const sessionId = params.get('session');
+    const statusEl = document.getElementById('status');
+    const video = document.getElementById('video');
+    const startBtn = document.getElementById('startBtn');
+
+    // 세션 ID 없으면 POC 고정값 사용 (PM 계획서: session_id 하드코딩 poc-001)
+    const effectiveSessionId = sessionId || 'poc-001';
+
+    socket.emit('join-as-mobile', effectiveSessionId);
+    statusEl.textContent = '✅ PC와 연결됨! (session: ' + effectiveSessionId + ')';
+    statusEl.classList.add('connected');
+    startCamera();
+
+    // ---------------------------
+    // [4.1] 프레임 전송용 순수 WebSocket (ws://<host>/ws/mobile)
+    // 포맷: {"session_id": "...", "frame": "<base64 jpeg, prefix 제외>"}
+    // ---------------------------
+    let frameSocket = null;
+    let frameSendInterval = null;
+    const FPS = 7; // 5~10fps 합의 구간 내에서 설정
+    const MAX_WIDTH = 640;
+    const MAX_HEIGHT = 480;
+
+    function connectFrameSocket() {
+      const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+      frameSocket = new WebSocket(`${protocol}://${window.location.host}/ws/mobile`);
+
+      frameSocket.onopen = () => console.log('[ws] 프레임 전송 채널 연결됨');
+      frameSocket.onclose = () => console.warn('[ws] 프레임 전송 채널 끊김. 3초 후 재연결');
+      frameSocket.onerror = (e) => console.error('[ws] 프레임 채널 에러', e);
+
+      frameSocket.onclose = () => {
+        setTimeout(connectFrameSocket, 3000);
+      };
+    }
+    connectFrameSocket();
+
+    // 캡처용 캔버스 (화면에는 안 보임)
+    const captureCanvas = document.createElement('canvas');
+    captureCanvas.width = MAX_WIDTH;
+    captureCanvas.height = MAX_HEIGHT;
+    const captureCtx = captureCanvas.getContext('2d');
+
+    function startFrameLoop() {
+      frameSendInterval = setInterval(() => {
+        if (!frameSocket || frameSocket.readyState !== WebSocket.OPEN) return;
+        if (video.videoWidth === 0) return; // 아직 카메라 준비 안됨
+
+        captureCtx.drawImage(video, 0, 0, MAX_WIDTH, MAX_HEIGHT);
+        const dataUrl = captureCanvas.toDataURL('image/jpeg', 0.6); // 압축률 조절 가능
+        const base64Only = dataUrl.split(',')[1]; // "data:image/jpeg;base64," 접두어 제거
+
+        frameSocket.send(JSON.stringify({
+          session_id: effectiveSessionId,
+          frame: base64Only
+        }));
+      }, 1000 / FPS);
+    }
+
+    async function startCamera() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'user', width: 640, height: 480 },
+          audio: false
+        });
+        video.srcObject = stream;
+        video.onloadedmetadata = () => startFrameLoop();
+      } catch (err) {
+        console.error(err);
+        statusEl.textContent = '❌ 카메라 권한이 필요합니다. (' + err.message + ')';
+        statusEl.classList.add('error');
+        startBtn.style.display = 'inline-block';
+      }
+    }
+
+    startBtn.addEventListener('click', startCamera);
+  </script>
+</body>
+</html>
