@@ -3,7 +3,7 @@ services:
     build: ./Web_Server
     container_name: Web_Server
     ports:
-      - "3000:80"
+      - "8000:80"
     depends_on:
       - video_engine
       - motion_engine

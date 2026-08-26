@@ -8,7 +8,7 @@
 paint_Draw/
 ├── docker-compose.yml   # 전체 서비스 정의
 ├── .env.example         # 환경변수 템플릿 (복사해서 .env로 사용)
-├── Web_Server/           # 담당자 A - 화면/웹 서버 (nginx, :3000)
+├── Web_Server/           # 담당자 A - 화면/웹 서버 (nginx, :8000)
 ├── Video_Engine/         # 담당자 B - 영상 처리 엔진 (Flask 자리표시자, :8001)
 └── Motion_Engine/        # 담당자 C - 모션 인식 엔진 (Flask 자리표시자, :8002)
 ```
@@ -20,7 +20,7 @@ cp .env.example .env
 docker compose up --build
 ```
 
-- Web_Server: http://localhost:3000
+- Web_Server: http://localhost:8000
 - Video_Engine: http://localhost:8001/health
 - Motion_Engine: http://localhost:8002/health
 
