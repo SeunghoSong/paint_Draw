@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 app = FastAPI(
     title="Air Canvas - Motion Engine (Container C)",
-    description="21개 랜드마크 분석, EMA 손떨림 보정, 획 삐침 0% 즉시 차단, 6대 제어 규칙 엔진"
+    description="21개 랜드마크 분석, EMA 손떨림 보정, 정밀 V-제스처 지우개 판별, 6대 제어 규칙 엔진"
 )
 
 # ==========================================================
@@ -23,7 +23,7 @@ class LandmarkPayload(BaseModel):
     landmarks: List[LandmarkItem]
 
 # ==========================================================
-# 🌟 세션별 상태 관리 클래스 (EMA + 스마트 디바운스)
+# 🌟 세션별 상태 관리 클래스 (EMA + 3프레임 디바운스)
 # ==========================================================
 class SessionState:
     def __init__(self):
@@ -78,9 +78,7 @@ async def process_gesture(payload: LandmarkPayload):
 
     # 1. 5개 손가락 상태 정밀 분석
     index_open = lm[8].y < lm[6].y
-    
-    # 🌟 중지가 조금이라도 들리면 즉시 감지하여 펜 삐침 원천 차단
-    middle_open = lm[12].y < lm[10].y or (lm[12].y < lm[9].y + 0.02)
+    middle_open = lm[12].y < lm[10].y
     ring_open = lm[16].y < lm[14].y
     pinky_open = lm[20].y < lm[18].y
 
@@ -108,7 +106,19 @@ async def process_gesture(payload: LandmarkPayload):
         state.prev_pan_x = None
         state.prev_pan_y = None
 
-    # 👍 [규칙 2: ZOOM_IN (화면 확대)]
+    # 🧹 [규칙 2: ERASE (지우개)] - 의도된 브이(✌️) 제스처 (검지+중지 나란히 펴짐)
+    elif index_open and middle_open and not ring_open and not pinky_open and not thumb_open:
+        height_diff = abs(lm[8].y - lm[12].y)
+        if height_diff < 0.12:
+            raw_action = "ERASE"
+            raw_x = (lm[8].x + lm[12].x) / 2.0
+            raw_y = (lm[8].y + lm[12].y) / 2.0
+        else:
+            raw_action = "HOVER"
+        state.prev_pan_x = None
+        state.prev_pan_y = None
+
+    # 👍 [규칙 3: ZOOM_IN (화면 확대)]
     elif thumb_open and not index_open and not middle_open and not ring_open and not pinky_open:
         raw_action = "ZOOM_IN"
         raw_x = lm[4].x
@@ -117,7 +127,7 @@ async def process_gesture(payload: LandmarkPayload):
         state.prev_pan_x = None
         state.prev_pan_y = None
 
-    # 🤙 [규칙 3: ZOOM_OUT (화면 축소)]
+    # 🤙 [규칙 4: ZOOM_OUT (화면 축소)]
     elif pinky_open and not thumb_open and not index_open and not middle_open and not ring_open:
         raw_action = "ZOOM_OUT"
         raw_x = lm[20].x
@@ -126,7 +136,7 @@ async def process_gesture(payload: LandmarkPayload):
         state.prev_pan_x = None
         state.prev_pan_y = None
 
-    # ✊ [규칙 4: PAN (화면 드래그)]
+    # ✊ [규칙 5: PAN (화면 드래그)]
     elif not index_open and not middle_open and not ring_open and not pinky_open and thumb_folded:
         raw_action = "PAN"
         raw_x = palm_center_x
@@ -139,15 +149,7 @@ async def process_gesture(payload: LandmarkPayload):
         state.prev_pan_x = palm_center_x
         state.prev_pan_y = palm_center_y
 
-    # 🧹 [규칙 5: ERASE (지우개)]
-    elif index_open and middle_open and not ring_open and not pinky_open:
-        raw_action = "ERASE"
-        raw_x = (lm[8].x + lm[12].x) / 2.0
-        raw_y = (lm[8].y + lm[12].y) / 2.0
-        state.prev_pan_x = None
-        state.prev_pan_y = None
-
-    # 🖐️ [규칙 6: HOVER (손 펴기 - 즉시 0초 차단)]
+    # 🖐️ [규칙 6: HOVER (손바닥/대기)]
     else:
         raw_action = "HOVER"
         raw_x = lm[8].x
@@ -155,24 +157,20 @@ async def process_gesture(payload: LandmarkPayload):
         state.prev_pan_x = None
         state.prev_pan_y = None
 
-    # 3. 스마트 컷오프 디바운스 (손을 펼 땐 즉시 컷!)
-    if raw_action == "HOVER" or raw_action == "ERASE" or raw_action == "PAN":
-        state.current_stable_action = raw_action
-        state.action_queue.clear()
-    else:
-        state.action_queue.append(raw_action)
-        action_counts = {}
-        for act in state.action_queue:
-            action_counts[act] = action_counts.get(act, 0) + 1
-        
-        most_common_action = max(action_counts, key=action_counts.get)
-        if action_counts[most_common_action] >= 2:
-            state.current_stable_action = most_common_action
+    # 3. 디바운스 필터 (3프레임 다수결)
+    state.action_queue.append(raw_action)
+    action_counts = {}
+    for act in state.action_queue:
+        action_counts[act] = action_counts.get(act, 0) + 1
+    
+    most_common_action = max(action_counts, key=action_counts.get)
+    if action_counts[most_common_action] >= 2:
+        state.current_stable_action = most_common_action
 
     final_action = state.current_stable_action
 
     # 4. EMA 손떨림 보정
-    alpha = 0.50
+    alpha = 0.48
     if state.smooth_x is None or state.smooth_y is None:
         state.smooth_x = raw_x
         state.smooth_y = raw_y
