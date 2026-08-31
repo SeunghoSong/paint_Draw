@@ -187,15 +187,30 @@
         ];
 
         const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws/mobile/${sessionId}`);
+        // 예외처리: WiFi↔LTE 전환, 음영구역 진입 등으로 끊겼을 때 자동 재연결 (기존엔 재연결 시도 자체가 없었음)
+        const WS_RECONNECT_DELAY_MS = 2000;
 
-        ws.onopen = () => {
+        function connectWebSocket() {
+            ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws/mobile/${sessionId}`);
+            ws.onopen = handleWsOpen;
+            ws.onmessage = handleWsMessage;
+            ws.onclose = handleWsClose;
+        }
+
+        function handleWsOpen() {
             statusBadge.textContent = "스트리밍 중 🟢";
             statusBadge.classList.add('active');
-            startCamera();
-        };
+            // 예외처리: 재연결일 때는 카메라를 다시 요청하지 않고(이미 켜져 있음) 프레임 전송만 재개
+            if (video.srcObject) {
+                startStreaming();
+            } else {
+                startCamera();
+            }
+        }
 
-        ws.onmessage = (event) => {
+        connectWebSocket();
+
+        function handleWsMessage(event) {
             const data = JSON.parse(event.data);
             if (data.type === 'FEEDBACK') {
                 const action = data.action;
@@ -211,7 +226,7 @@
                     overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
                 }
             }
-        };
+        }
 
         function drawMobileSkeleton(landmarks) {
             overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
@@ -254,11 +269,13 @@
             }
         }
 
-        ws.onclose = () => {
-            statusBadge.textContent = "연결 끊김 🔴";
+        function handleWsClose() {
+            statusBadge.textContent = "연결 끊김 🔴 (재연결 시도 중...)";
             statusBadge.classList.remove('active');
             stopStreaming();
-        };
+            // 예외처리: 자동 재연결 (카메라 스트림은 그대로 유지, 소켓만 다시 연결)
+            setTimeout(connectWebSocket, WS_RECONNECT_DELAY_MS);
+        }
 
         async function startCamera() {
             try {

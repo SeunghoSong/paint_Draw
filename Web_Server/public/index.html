@@ -403,14 +403,28 @@
         }
 
         const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws/pc/${sessionId}`);
+        // 예외처리: 끊겼을 때 자동 재연결 (기존엔 onclose 핸들러 자체가 없어서 서버가 재시작되면
+        // 페이지를 수동으로 새로고침해야 했음)
+        let ws;
+        const WS_RECONNECT_DELAY_MS = 2000;
 
         const statusDot = document.getElementById('status-dot');
         const statusText = document.getElementById('status-text');
         const modeIcon = document.getElementById('mode-icon');
         const modeText = document.getElementById('mode-text');
 
-        ws.onmessage = (event) => {
+        function connectWebSocket() {
+            ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws/pc/${sessionId}`);
+            ws.onmessage = handleWsMessage;
+            ws.onclose = () => {
+                statusDot.classList.remove('connected');
+                statusText.textContent = "서버 연결 끊김 (재연결 시도 중...)";
+                setTimeout(connectWebSocket, WS_RECONNECT_DELAY_MS);
+            };
+        }
+        connectWebSocket();
+
+        function handleWsMessage(event) {
             const data = JSON.parse(event.data);
 
             if (data.type === 'STATUS') {
@@ -433,7 +447,7 @@
                     skCtx.clearRect(0, 0, skOverlayCanvas.width, skOverlayCanvas.height);
                 }
             }
-        };
+        }
 
         const HAND_CONNECTIONS = [
             [0, 1], [1, 2], [2, 3], [3, 4],

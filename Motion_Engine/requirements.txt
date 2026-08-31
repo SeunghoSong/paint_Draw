@@ -1,3 +1,7 @@
-fastapi>=0.110.0
-uvicorn[standard]>=0.28.0
-pydantic>=2.6.0
+# 버전관리: >=(열린 범위) → ==(고정)으로 변경, Video_Engine과 동일 fastapi/uvicorn 버전으로 통일
+# fastapi>=0.110.0        # 버전관리 이전 값
+# uvicorn[standard]>=0.28.0  # 버전관리 이전 값
+# pydantic>=2.6.0         # 버전관리 이전 값
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
+pydantic==2.13.4

@@ -3,5 +3,6 @@ __pycache__/
 .venv/
 venv/
 
-# 빌드 시점에 새로 받으므로 호스트에 남아있는 모델 파일은 빌드 컨텍스트에서 제외
-models/
+# 버전관리: 모델 바이너리(.task)만 빌드 컨텍스트에서 제외 (빌드 시점에 manifest.json 기준으로 새로 받음)
+# manifest.json은 버전/체크섬 정보를 담고 있어 빌드 컨텍스트에 포함되어야 함
+models/*.task

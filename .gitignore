@@ -1,5 +1,6 @@
 # env
 .env
+.env.tuning
 
 # python
 __pycache__/
@@ -11,6 +12,13 @@ venv/
 node_modules/
 dist/
 
+# server.js가 첫 실행 시 자동 생성하는 자체 서명 SSL 인증서/키 (커밋하면 안 되는 비밀키)
+Web_Server/cert.pem
+Web_Server/key.pem
+
 # os
 .DS_Store
 Thumbs.db
+
+#docs
+docs/IMPROVEMENTS.md

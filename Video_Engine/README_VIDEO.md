@@ -9,7 +9,7 @@
 2. base64 → OpenCV(BGR) 이미지 디코딩
 3. MediaPipe Hands로 21개 (x, y) 정규화(0~1) 좌표 추출 (z는 사용하지 않음)
 4. 손 미검출 시 `detected: false` + 빈 배열로 처리 (예외로 인한 크래시 없음)
-5. 결과를 WebSocket으로 Container C에 전송
+5. 결과를 같은 WebSocket으로 Container A에게 반환 — Container C 호출 여부는 Container A가 결정
 
 ## 인터페이스
 
@@ -18,16 +18,21 @@
 { "session_id": "poc-001", "type": "frame", "frame": "<base64 jpeg>", "ts": 1735200000000 }
 ```
 
-### B → C (송신)
+### B → A (송신, 같은 WebSocket 연결로 반환)
 ```json
 { "session_id": "poc-001", "type": "landmarks", "detected": true, "landmarks": [[0.42, 0.55], ...], "ts": 1735200000050 }
 ```
 - `landmarks`는 항상 길이 21 (미검출 시 빈 배열)
 - 좌표는 0~1 정규화 값 그대로 전달 (픽셀 변환 금지, 변환은 Container C 책임)
+- Container A는 이 응답을 받아 `detected: true`일 때만 Container C의 HTTP `/gesture`를 호출한다
+  (`Web_Server/server.js`의 `bSocket.on('message', ...)` 참고)
 
-> 참고: A/C 컨테이너가 아직 준비되지 않은 시점에 작성되어, WebSocket 엔드포인트 경로(`/ws`)와
-> Container C 접속 주소(기본값 `ws://motion_engine:8002/ws`, 환경변수 `MOTION_ENGINE_WS_URL`로 재정의 가능)는
-> B 쪽의 가정값이다. 실제 연동 전 팀 간 확인 필요.
+> **버그수정 이력**: 예전엔 여기서 Container C에도 WebSocket으로 직접 전송(`MotionEngineClient`)하고
+> 있었는데, 그 결과는 아무도 읽지 않으면서 Container C의 세션 상태(EMA 스무딩/디바운스)만
+> 이중으로 갱신시키는 문제가 있었다(Container A 경유 경로가 실제로 렌더링에 쓰이는 경로였음).
+> 그래서 이 파일에서 Container C로의 직접 전송은 제거하고, 위 흐름(B→A만)으로 정리함.
+> Container B↔C 자체를 단독으로 검증하고 싶으면 `webcam_motion_test.py`(호스트에서 직접 실행,
+> Motion_Engine의 `/ws`에 직접 접속)를 쓰면 된다 — 이 스크립트는 이 프로덕션 경로와 무관하다.
 
 ## 참고: 손 검출 모델
 현재 mediapipe는 예전 `mp.solutions.hands` API를 제거하고 Tasks API(`HandLandmarker`)로 통일되어 있다.
@@ -37,11 +42,18 @@ Tasks API는 별도 모델 파일(`hand_landmarker.task`, 약 7.8MB)이 필요�
 - 로컬 실행(`python app.py`, `python webcam_test.py`)은 최초 1회만 인터넷 연결이 필요하다.
 
 ## 로깅
-프로젝트 공통 한 줄 JSON 로그 포맷을 그대로 따른다.
+프로젝트 공통 한 줄 JSON 로그 포맷을 그대로 따른다. 자세한 레벨 기준/필드는
+[`docs/01-log-level-guidelines.md`](../docs/01-log-level-guidelines.md),
+[`docs/02-log-field-schema.md`](../docs/02-log-field-schema.md) 참고.
 ```json
-{"ts": 1735200000123, "container": "B", "session_id": "poc-001", "level": "INFO", "event": "landmarks_extracted", "detail": {"detected": true, "count": 21}}
+{"ts": 1735200000123, "container": "B", "session_id": "poc-001", "level": "DEBUG", "event": "landmarks_extracted", "detail": {"detected": true, "count": 21}}
 ```
-사용 이벤트: `frame_received`, `landmarks_extracted`, `hand_not_detected`, `frame_forward_failed`(C 전달 실패), `ws_connected` / `ws_disconnected`.
+사용 이벤트:
+- `ws_connected` / `ws_disconnected` (INFO) — Container A와의 연결 생명주기
+- `frame_received`, `landmarks_extracted`, `no_hand_in_frame`(정상 미검출) (DEBUG) — 프레임마다 발생하는 고빈도 이벤트라 운영 중엔 기본적으로 안 보임(`LOG_LEVEL=debug`일 때만)
+- `invalid_frame_message` (WARNING) — Container A가 형식이 안 맞는 프레임 메시지를 보낸 경우
+- `hand_detection_error` (ERROR) — 디코딩/검출 중 실제 예외 발생
+
 어떤 예외가 발생해도 프로세스는 죽지 않고 `level: "ERROR"` 로그만 남긴다.
 
 ## 실행 방법

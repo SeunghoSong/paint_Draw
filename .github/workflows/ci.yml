@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  lint-and-syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Web_Server 검증 (npm test = node --check)
+        working-directory: Web_Server
+        run: |
+          npm ci
+          npm test
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # mediapipe/opencv 등 실제 의존성은 설치하지 않는다 - py_compile은 문법만 검사하므로 불필요
+      # (무거운 ML 의존성을 CI마다 설치하면 시간이 오래 걸림)
+      - name: Video_Engine / Motion_Engine 문법 검증
+        run: python -m py_compile Video_Engine/app.py Motion_Engine/app.py
+
+      - name: .env 파일 준비 (docker compose 설정 검증용, 실제 값 아님)
+        run: |
+          cp .env.example .env
+          cp .env.tuning.example .env.tuning
+
+      - name: docker-compose.yml 설정 검증
+        run: docker compose config --quiet
+
+  docker-build:
+    runs-on: ubuntu-latest
+    needs: lint-and-syntax
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: .env 파일 준비
+        run: |
+          cp .env.example .env
+          cp .env.tuning.example .env.tuning
+
+      # 이 저장소를 로컬에서 작업할 때는 Docker 데몬이 없어 빌드 자체를 확인 못 했던 부분 -
+      # PR마다 3개 서비스가 실제로 빌드되는지 여기서 검증
+      - name: 3개 서비스 이미지 빌드 검증
+        run: docker compose build

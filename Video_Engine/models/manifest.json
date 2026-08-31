@@ -1,0 +1,13 @@
+{
+  "model": "hand_landmarker",
+  "version": "1",
+  "source_url": "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+  "checksum": {
+    "algorithm": "md5",
+    "value": "15318430ea3851670fe9914116a9cfad"
+  },
+  "content_length_bytes": 7819105,
+  "input_spec": "mp.Image(SRGB) 단일 프레임, running_mode=VIDEO, 단조증가 timestamp_ms 필요",
+  "output_spec": "손 최대 num_hands개, 각 21개 (x, y, z) 정규화 좌표 [0,1]",
+  "min_compatible_code_version": "1.0.0"
+}

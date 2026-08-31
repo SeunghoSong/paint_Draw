@@ -1,6 +1,8 @@
 fastapi==0.141.1
 uvicorn[standard]==0.52.4
-websockets==17.0.1
+# websockets==17.0.1  # 버그수정: MotionEngineClient(Container C로의 직접 WS 클라이언트) 제거로 코드에서 직접 import 안 함.
+# FastAPI/Starlette의 서버측 WebSocket(/ws 엔드포인트)은 uvicorn[standard]가 전이 의존성으로 제공하므로 계속 동작함
+# (Motion_Engine도 websockets를 명시적으로 pin하지 않고 동일하게 동작 중 — requirements.txt 비교 참고).
 mediapipe==1.0.1
 # opencv-contrib-python(cv2, GUI 포함)은 mediapipe의 의존성으로 자동 설치된다.
 # 별도로 opencv-python을 추가하면 동일한 cv2 네임스페이스가 충돌하니 추가하지 말 것.

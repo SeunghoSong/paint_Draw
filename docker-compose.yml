@@ -7,11 +7,30 @@ services:
     volumes:
       - ./Web_Server/public:/app/public
       - ./Web_Server/server.js:/app/server.js
+    env_file:
+      - .env  # 파라미터화: web_server에도 .env 주입 (기존엔 누락돼있었음)
     depends_on:
       - video_engine
       - motion_engine
     networks:
       - paintdraw_net
+    # 예외처리: 컨테이너가 죽어도(크래시/OOM) 자동으로 재기동
+    restart: unless-stopped
+    # 예외처리: 컨테이너 메모리 상한. 누수가 나도 여기서 OOM-kill 되고 restart 정책으로 회수됨(무한정 증식 방지)
+    mem_limit: 512m
+    # 예외처리: docker 기본 json-file 로그가 무한정 쌓여 디스크를 고갈시키지 않도록 로테이션 적용
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    # 예외처리: 단순 프로세스 생존이 아니라 /health 응답 여부로 살아있는지 확인
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:8000/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   video_engine:
     build: ./Video_Engine
@@ -24,6 +43,20 @@ services:
       - .env
     networks:
       - paintdraw_net
+    restart: unless-stopped
+    # 예외처리: MediaPipe/OpenCV가 무거워서 web_server/motion_engine보다 상한을 넉넉히 잡음(관찰치 기반 아님, 안전망 목적)
+    mem_limit: 1g
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8001/health', timeout=3).status == 200 else 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
 
   motion_engine:
     build: ./Motion_Engine
@@ -34,8 +67,22 @@ services:
       - ./Motion_Engine/app.py:/app/app.py
     env_file:
       - .env
+      - .env.tuning  # 파라미터화: 제스처 튜닝값 분리 (Motion_Engine만 사용)
     networks:
       - paintdraw_net
+    restart: unless-stopped
+    mem_limit: 512m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8002/health', timeout=3).status == 200 else 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
 networks:
   paintdraw_net:
